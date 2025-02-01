@@ -1,0 +1,25 @@
+login_system/
+├── assets/
+│   ├── css/
+│   │   ├── style.css          # Nuestros estilos personalizados
+│   │   └── bootstrap.min.css  # Descargado de CDN de Bootstrap
+│   ├── js/
+│   │   ├── main.js           # Nuestro JavaScript personalizado
+│   │   └── bootstrap.bundle.min.js  # Descargado de CDN de Bootstrap
+│   └── img/                  # Para logos e imágenes
+├── includes/
+│   ├── auth.php             # Maneja la autenticación
+│   ├── functions.php        # Funciones auxiliares
+│   └── session.php          # Manejo de sesiones
+├── admin/
+│   ├── dashboard.php        # Panel principal
+│   ├── users.php           # Gestión de usuarios
+│   └── roles.php           # Gestión de roles
+├── classes/
+│   ├── User.php            # Clase para manejo de usuarios
+│   ├── Role.php            # Clase para manejo de roles
+│   └── Database.php        # Clase de conexión a base de datos
+├── index.php               # Página de inicio/redirección
+├── login.php              # Formulario de login
+├── register.php           # Formulario de registro
+└── logout.php             # Cierre de sesión
