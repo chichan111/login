@@ -10,31 +10,38 @@ class User {
         $this->db = $database->getConnection();
     }
 
-    // Método de login
+    // Método de login actualizado
     public function login($username, $password) {
         try {
+            error_log("Iniciando proceso de login para usuario: " . $username);
+            
             $query = "SELECT u.*, r.name as role_name, r.can_register_users 
-                     FROM " . $this->table . " u 
-                     JOIN roles r ON u.role_id = r.id 
-                     WHERE u.username = ? AND u.is_active = 1";
+                    FROM " . $this->table . " u 
+                    JOIN roles r ON u.role_id = r.id 
+                    WHERE u.username = ?";
             
             $stmt = $this->db->prepare($query);
             $stmt->execute([$username]);
             $user = $stmt->fetch();
 
+            error_log("Consulta completada. Usuario encontrado: " . ($user ? 'SI' : 'NO'));
+
             if ($user && password_verify($password, $user['password'])) {
-                unset($user['password']); // No devolver el hash de la contraseña
+                error_log("Contraseña verificada correctamente");
+                unset($user['password']);
                 return [
                     'success' => true,
                     'user' => $user
                 ];
             }
 
+            error_log("Autenticación fallida");
             return [
                 'success' => false,
                 'message' => 'Usuario o contraseña incorrectos'
             ];
         } catch (Exception $e) {
+            error_log("Error en login: " . $e->getMessage());
             throw new Exception("Error en el login: " . $e->getMessage());
         }
     }
@@ -42,7 +49,6 @@ class User {
     // Método de registro
     public function register($userData) {
         try {
-            // Verificar si el usuario ya existe
             if ($this->usernameExists($userData['username'])) {
                 return [
                     'success' => false,
@@ -50,7 +56,6 @@ class User {
                 ];
             }
 
-            // Verificar si el email ya existe
             if ($this->emailExists($userData['email'])) {
                 return [
                     'success' => false,
@@ -58,12 +63,11 @@ class User {
                 ];
             }
 
-            // Hashear la contraseña
             $hashedPassword = password_hash($userData['password'], PASSWORD_DEFAULT);
 
             $query = "INSERT INTO " . $this->table . " 
-                     (username, email, password, first_name, last_name, role_id) 
-                     VALUES (?, ?, ?, ?, ?, ?)";
+                    (username, email, password, first_name, last_name, role_id) 
+                    VALUES (?, ?, ?, ?, ?, ?)";
 
             $stmt = $this->db->prepare($query);
             $stmt->execute([
@@ -103,9 +107,9 @@ class User {
     // Obtener usuario por ID
     public function getById($id) {
         $query = "SELECT u.*, r.name as role_name 
-                 FROM " . $this->table . " u 
-                 JOIN roles r ON u.role_id = r.id 
-                 WHERE u.id = ?";
+                FROM " . $this->table . " u 
+                JOIN roles r ON u.role_id = r.id 
+                WHERE u.id = ?";
         $stmt = $this->db->prepare($query);
         $stmt->execute([$id]);
         $user = $stmt->fetch();
@@ -121,7 +125,6 @@ class User {
             $fieldsToUpdate = [];
             $params = [];
             
-            // Construir la consulta dinámicamente
             foreach ($userData as $key => $value) {
                 if ($key !== 'id' && $key !== 'password') {
                     $fieldsToUpdate[] = "$key = ?";
@@ -129,13 +132,12 @@ class User {
                 }
             }
 
-            // Si hay una nueva contraseña, actualizarla
             if (!empty($userData['password'])) {
                 $fieldsToUpdate[] = "password = ?";
                 $params[] = password_hash($userData['password'], PASSWORD_DEFAULT);
             }
 
-            $params[] = $id; // Para el WHERE id = ?
+            $params[] = $id;
             
             $query = "UPDATE " . $this->table . " SET " . 
                     implode(", ", $fieldsToUpdate) . 
@@ -173,13 +175,12 @@ class User {
     public function getAll($limit = 10, $offset = 0, $search = '') {
         try {
             $query = "SELECT u.*, r.name as role_name 
-                     FROM " . $this->table . " u 
-                     JOIN roles r ON u.role_id = r.id 
-                     WHERE u.is_active = 1";
+                    FROM " . $this->table . " u 
+                    JOIN roles r ON u.role_id = r.id";
             $params = [];
 
             if (!empty($search)) {
-                $query .= " AND (u.username LIKE ? OR u.email LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)";
+                $query .= " WHERE (u.username LIKE ? OR u.email LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ?)";
                 $searchTerm = "%$search%";
                 $params = array_fill(0, 4, $searchTerm);
             }
@@ -198,34 +199,48 @@ class User {
 
     // Actualizar último login
     public function updateLastLogin($userId) {
-        $query = "UPDATE " . $this->table . " SET last_login = CURRENT_TIMESTAMP WHERE id = ?";
-        $stmt = $this->db->prepare($query);
-        return $stmt->execute([$userId]);
+        try {
+            $query = "UPDATE " . $this->table . " SET last_login = CURRENT_TIMESTAMP WHERE id = ?";
+            $stmt = $this->db->prepare($query);
+            return $stmt->execute([$userId]);
+        } catch (Exception $e) {
+            error_log("Error actualizando último login: " . $e->getMessage());
+            return false;
+        }
     }
 
     // Almacenar token de "recordarme"
     public function storeRememberToken($userId, $token) {
-        $query = "UPDATE " . $this->table . " SET remember_token = ? WHERE id = ?";
-        $stmt = $this->db->prepare($query);
-        return $stmt->execute([$token, $userId]);
+        try {
+            $query = "UPDATE " . $this->table . " SET remember_token = ? WHERE id = ?";
+            $stmt = $this->db->prepare($query);
+            return $stmt->execute([$token, $userId]);
+        } catch (Exception $e) {
+            error_log("Error almacenando token: " . $e->getMessage());
+            return false;
+        }
     }
 
     // Obtener usuario por token de "recordarme"
     public function getUserByRememberToken($token) {
-        $query = "SELECT * FROM " . $this->table . " WHERE remember_token = ? AND is_active = 1";
-        $stmt = $this->db->prepare($query);
-        $stmt->execute([$token]);
-        $user = $stmt->fetch();
-        if ($user) {
-            unset($user['password']);
+        try {
+            $query = "SELECT * FROM " . $this->table . " WHERE remember_token = ? AND is_active = 1";
+            $stmt = $this->db->prepare($query);
+            $stmt->execute([$token]);
+            $user = $stmt->fetch();
+            if ($user) {
+                unset($user['password']);
+            }
+            return $user;
+        } catch (Exception $e) {
+            error_log("Error obteniendo usuario por token: " . $e->getMessage());
+            return null;
         }
-        return $user;
     }
 
     // Cambiar contraseña
     public function changePassword($userId, $currentPassword, $newPassword) {
         try {
-            // Verificar la contraseña actual
             $query = "SELECT password FROM " . $this->table . " WHERE id = ?";
             $stmt = $this->db->prepare($query);
             $stmt->execute([$userId]);
@@ -238,7 +253,6 @@ class User {
                 ];
             }
 
-            // Actualizar la contraseña
             $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
             $query = "UPDATE " . $this->table . " SET password = ? WHERE id = ?";
             $stmt = $this->db->prepare($query);
@@ -254,15 +268,13 @@ class User {
     }
 
     // Contar total de usuarios
-    public function countAll($search = '') {
+    public function countAll($condition = '') {
         try {
-            $query = "SELECT COUNT(*) FROM " . $this->table . " WHERE is_active = 1";
+            $query = "SELECT COUNT(*) FROM " . $this->table;
             $params = [];
 
-            if (!empty($search)) {
-                $query .= " AND (username LIKE ? OR email LIKE ? OR first_name LIKE ? OR last_name LIKE ?)";
-                $searchTerm = "%$search%";
-                $params = array_fill(0, 4, $searchTerm);
+            if (!empty($condition)) {
+                $query .= " WHERE " . $condition;
             }
 
             $stmt = $this->db->prepare($query);

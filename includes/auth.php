@@ -2,50 +2,46 @@
 session_start();
 require_once '../classes/Database.php';
 require_once '../classes/User.php';
-require_once 'functions.php';
 
 // Verificar si se recibió una acción
 if (!isset($_POST['action'])) {
-    redirect('../login.php');
+    header("Location: ../login.php");
+    exit();
 }
 
 $action = $_POST['action'];
-$user = new User();
 
-switch ($action) {
-    case 'login':
-        handleLogin($user);
-        break;
-    case 'register':
-        handleRegister($user);
-        break;
-    default:
-        redirect('../login.php');
+if ($action === 'login') {
+    handleLogin();
+} elseif ($action === 'register') {
+    handleRegister();
+} else {
+    header("Location: ../login.php");
+    exit();
 }
 
-// Función para manejar el login
-function handleLogin($user) {
-    // Validar campos requeridos
-    if (!isset($_POST['username']) || !isset($_POST['password'])) {
-        setError("Todos los campos son requeridos");
-        redirect('../login.php');
-    }
-
-    $username = trim($_POST['username']);
-    $password = $_POST['password'];
-    $remember = isset($_POST['remember']) ? true : false;
-
+function handleLogin() {
     try {
-        $result = $user->login($username, $password);
+        if (!isset($_POST['username']) || !isset($_POST['password'])) {
+            throw new Exception("Todos los campos son requeridos");
+        }
+
+        $username = trim($_POST['username']);
+        $password = $_POST['password'];
         
+        // Para debugging
+        error_log("Intento de login - Usuario: " . $username);
+        
+        $user = new User();
+        $result = $user->login($username, $password);
+
         if ($result['success']) {
-            // Iniciar sesión
             $_SESSION['user_id'] = $result['user']['id'];
             $_SESSION['username'] = $result['user']['username'];
             $_SESSION['role_id'] = $result['user']['role_id'];
 
-            // Si seleccionó "recordarme", crear cookie
-            if ($remember) {
+            // Si se seleccionó "recordarme"
+            if (isset($_POST['remember']) && $_POST['remember'] == 'on') {
                 $token = bin2hex(random_bytes(32));
                 setcookie('remember_token', $token, time() + (86400 * 30), '/'); // 30 días
                 $user->storeRememberToken($result['user']['id'], $token);
@@ -53,69 +49,62 @@ function handleLogin($user) {
 
             // Actualizar último login
             $user->updateLastLogin($result['user']['id']);
-
-            redirect('../admin/dashboard.php');
+            
+            header("Location: ../admin/dashboard.php");
+            exit();
         } else {
-            setError($result['message']);
-            redirect('../login.php');
+            $_SESSION['error'] = "Usuario o contraseña incorrectos";
+            header("Location: ../login.php");
+            exit();
         }
     } catch (Exception $e) {
-        setError("Error al intentar iniciar sesión. Por favor, intente nuevamente.");
-        redirect('../login.php');
+        error_log("Error en login: " . $e->getMessage());
+        $_SESSION['error'] = "Error al iniciar sesión: " . $e->getMessage();
+        header("Location: ../login.php");
+        exit();
     }
 }
 
-// Función para manejar el registro
-function handleRegister($user) {
-    // Verificar permisos
-    if (!isset($_SESSION['user_id'])) {
-        setError("No tiene permisos para realizar esta acción");
-        redirect('../login.php');
-    }
-
-    // Validar campos requeridos
-    $requiredFields = ['username', 'email', 'password', 'confirm_password', 'first_name', 'last_name', 'role_id'];
-    foreach ($requiredFields as $field) {
-        if (!isset($_POST[$field]) || empty(trim($_POST[$field]))) {
-            setError("Todos los campos son requeridos");
-            redirect('../register.php');
-        }
-    }
-
-    // Validar que las contraseñas coincidan
-    if ($_POST['password'] !== $_POST['confirm_password']) {
-        setError("Las contraseñas no coinciden");
-        redirect('../register.php');
-    }
-
-    // Validar complejidad de la contraseña
-    if (!validatePassword($_POST['password'])) {
-        setError("La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula, un número y un carácter especial");
-        redirect('../register.php');
-    }
-
+function handleRegister() {
     try {
-        $userData = [
+        // Verificar si hay usuario logueado
+        if (!isset($_SESSION['user_id'])) {
+            throw new Exception("Debe iniciar sesión para registrar usuarios");
+        }
+
+        // Validar campos requeridos
+        $requiredFields = ['username', 'email', 'password', 'confirm_password', 'first_name', 'last_name', 'role_id'];
+        foreach ($requiredFields as $field) {
+            if (!isset($_POST[$field]) || empty(trim($_POST[$field]))) {
+                throw new Exception("Todos los campos son requeridos");
+            }
+        }
+
+        // Validar que las contraseñas coincidan
+        if ($_POST['password'] !== $_POST['confirm_password']) {
+            throw new Exception("Las contraseñas no coinciden");
+        }
+
+        $user = new User();
+        $result = $user->register([
             'username' => trim($_POST['username']),
             'email' => trim($_POST['email']),
             'password' => $_POST['password'],
             'first_name' => trim($_POST['first_name']),
             'last_name' => trim($_POST['last_name']),
             'role_id' => (int)$_POST['role_id']
-        ];
+        ]);
 
-        $result = $user->register($userData);
-        
         if ($result['success']) {
-            setSuccess("Usuario registrado exitosamente");
-            redirect('../admin/users.php');
+            $_SESSION['success'] = "Usuario registrado exitosamente";
+            header("Location: ../admin/users.php");
         } else {
-            setError($result['message']);
-            redirect('../register.php');
+            throw new Exception($result['message']);
         }
     } catch (Exception $e) {
-        setError("Error al registrar el usuario. Por favor, intente nuevamente.");
-        redirect('../register.php');
+        $_SESSION['error'] = $e->getMessage();
+        header("Location: ../register.php");
     }
+    exit();
 }
 ?>
